@@ -186,7 +186,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                   >
                     <Terminal size={18} />
                     <div className="flex-1">
-                        <div className="font-semibold text-sm">Deployment Guide</div>
+                        <div className="font-semibold text-sm">Technical Setup</div>
                     </div>
                   </button>
 
@@ -378,7 +378,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                     {/* 3. Technical Guide */}
                     {activeTab === 'guide' && (
                         <div className="max-w-3xl mx-auto animate-fade-in">
-                            <h2 className="text-2xl font-bold text-slate-900 mb-6">Engineering Playbook</h2>
+                            <h2 className="text-2xl font-bold text-slate-900 mb-6">Technical Implementation Guide</h2>
                             <div className="prose prose-slate max-w-none prose-pre:bg-slate-900 prose-pre:text-indigo-100">
                             <MarkdownText text={activeTask.technicalGuide || ""} />
                             </div>
