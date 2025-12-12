@@ -199,7 +199,17 @@ class AIService {
       return { ...task, ...details, thumbnailUrl, detailsLoaded: true };
     } catch (error) {
       console.error("Error generating task details:", error);
-      return task;
+      // Fallback object to stop infinite loading loops in UI
+      return { 
+          ...task, 
+          detailsLoaded: true, 
+          emailBody: "## System Message\n\nUnable to generate full task details at this time due to high traffic or connectivity issues. Please try reloading the project later.",
+          emailSubject: "Content Generation Error",
+          senderName: "System",
+          senderRole: "Administrator",
+          technicalGuide: "Details unavailable.",
+          quiz: []
+      };
     }
   }
 

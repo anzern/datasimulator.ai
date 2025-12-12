@@ -1,3 +1,4 @@
+// ... (imports remain same)
 import React, { useState, useEffect, useMemo } from "react";
 import { COMPANIES } from "./constants";
 import { aiService } from "./services/ai";
@@ -9,7 +10,7 @@ import TaskDetail from "./views/TaskDetail";
 import SignIn from "./views/SignIn";
 import Profile from "./views/Profile";
 import HelpCenter from "./views/HelpCenter";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 
 type ViewState = 'signin' | 'onboarding' | 'board' | 'detail' | 'profile' | 'help';
 
@@ -44,19 +45,11 @@ const App = () => {
     
     if (user.companyId) {
          // Auto-load workspace if user was in one
-         await handleSwitchWorkspace(user.companyId, false); // false = don't set loading UI if generic
+         // Pass user.uid explicitly because state update setUserUid is async
+         await handleSwitchWorkspace(user.companyId, false, user.uid); 
          
          if (user.lastActiveView) {
              setView(user.lastActiveView as ViewState);
-             
-             // Restore Detail View
-             if (user.lastActiveView === 'detail' && user.lastActiveTaskId) {
-                 // We need to wait for tasks to be populated by handleSwitchWorkspace
-                 // Since state updates are async, we can't find it in 'tasks' immediately here.
-                 // We will rely on the fact handleSwitchWorkspace returns data or updates state.
-                 // Ideally, handleSwitchWorkspace should return the tasks.
-                 // Let's refactor handleSwitchWorkspace to return tasks.
-             }
          } else {
              setView('board');
          }
@@ -124,8 +117,13 @@ const App = () => {
 
   // --- 2. WORKSPACE HANDLERS ---
 
-  const handleSwitchWorkspace = async (companyId: string, showLoading = true) => {
-    if (!userUid) return;
+  const handleSwitchWorkspace = async (companyId: string, showLoading = true, overrideUid?: string) => {
+    const targetUid = overrideUid || userUid;
+    if (!targetUid) {
+        console.warn("Attempted to switch workspace without User UID");
+        return;
+    }
+
     const company = COMPANIES.find(c => c.id === companyId);
     if (!company) return;
 
@@ -133,8 +131,9 @@ const App = () => {
     
     try {
         // Load Global Projects + User Progress
-        const { projects, userState } = await persistenceService.getCompanyWorkspace(userUid, companyId);
+        const { projects, userState } = await persistenceService.getCompanyWorkspace(targetUid, companyId);
         
+        // Ensure state is updated atomically where possible before view switch
         setActiveCompany(company);
         setTasks(projects);
         setMetrics(userState.metrics || null);
@@ -204,28 +203,25 @@ const App = () => {
   };
 
   const handleTaskClick = async (task: Task) => {
+    // We only set the view here. Data loading is handled by the TaskDetail component
+    // on mount. This prevents race conditions and ensures "auto-load" logic is centralized.
     setCurrentTask(task);
     setView('detail');
     if (userUid) persistenceService.saveUser(userUid, { lastActiveView: 'detail', lastActiveTaskId: task.id });
-
-    // Load Details (Global Cache)
-    if (!task.detailsLoaded && activeCompany) {
-      setLoadingDetails(true);
-      const detailedTask = await aiService.generateTaskDetails(activeCompany, task);
-      
-      // Save to Global Cache
-      await persistenceService.saveGlobalTaskDetails(activeCompany.id, task.id, detailedTask);
-      
-      optimisticUpdate(task.id, (t) => ({ ...t, ...detailedTask }));
-      setLoadingDetails(false);
-    }
   };
 
   // Loads details for nested items
   const handleLoadDetails = async (targetTaskId: string) => {
-      if (!currentTask || !activeCompany) return;
+      // Prevent double-loading if already in progress
+      if (loadingDetails) return;
+
+      // We need activeCompany to generate details
+      if (!activeCompany) {
+          console.error("Cannot load details: No active company");
+          return;
+      }
       
-      // Check if loaded in local state first
+      // Helper to find task in state
       const findTask = (list: Task[]): Task | undefined => {
           for (const t of list) {
               if (t.id === targetTaskId) return t;
@@ -236,15 +232,31 @@ const App = () => {
           }
       };
       
-      const target = findTask(tasks); // Check main tree
-      if (target && target.detailsLoaded) return;
+      let target = findTask(tasks); 
+      
+      // Fallback: If not found in tree (rare race condition), check if it matches currentTask
+      if (!target && currentTask && currentTask.id === targetTaskId) {
+          target = currentTask;
+      }
+
+      if (!target) {
+          console.warn("Target task not found for detail loading:", targetTaskId);
+          return;
+      }
+      
+      if (target.detailsLoaded) return;
 
       setLoadingDetails(true);
-      const detailedSubTask = await aiService.generateTaskDetails(activeCompany, target!);
-      await persistenceService.saveGlobalTaskDetails(activeCompany.id, targetTaskId, detailedSubTask);
-      
-      optimisticUpdate(targetTaskId, (t) => ({ ...t, ...detailedSubTask }));
-      setLoadingDetails(false);
+      try {
+        const detailedSubTask = await aiService.generateTaskDetails(activeCompany, target);
+        await persistenceService.saveGlobalTaskDetails(activeCompany.id, targetTaskId, detailedSubTask);
+        
+        optimisticUpdate(targetTaskId, (t) => ({ ...t, ...detailedSubTask }));
+      } catch (e) {
+          console.error("Failed to load details", e);
+      } finally {
+        setLoadingDetails(false);
+      }
   };
 
   const handleCompleteTask = async (taskId: string) => {
@@ -444,7 +456,22 @@ const App = () => {
     );
   }
 
-  return null;
+  // Fallback for weird states
+  return (
+     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+         <AlertCircle className="w-10 h-10 text-slate-400 mb-4" />
+         <h2 className="text-xl font-bold text-slate-700">Something went wrong</h2>
+         <p className="text-slate-500 mb-6 max-w-md mt-2">
+             We couldn't load the requested view. This usually happens if the project data is incomplete or the session was interrupted.
+         </p>
+         <button 
+            onClick={() => { setView('board'); if (userUid && activeCompany) handleSwitchWorkspace(activeCompany.id); else setView('signin'); }}
+            className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700"
+         >
+             Return to Dashboard
+         </button>
+     </div>
+  );
 };
 
 export default App;
