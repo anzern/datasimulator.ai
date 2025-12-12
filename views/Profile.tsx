@@ -1,14 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { 
   ArrowLeft, User, Award, Zap, Layers, Star, 
-  TrendingUp, Briefcase, Flame, Check, RefreshCw
+  TrendingUp, Briefcase, Flame, Check, RefreshCw, Info
 } from 'lucide-react';
-import { CompanyType, Task, BrandAssets } from '../types';
-import { COMPANIES } from '../constants';
+import { CompanyType, Task, BrandAssets, UserMetrics } from '../types';
+import { COMPANIES, METRIC_EXPLANATIONS } from '../constants';
 
 interface ProfileProps {
   email: string;
   name: string;
+  metrics: UserMetrics | null;
   activeCompany: CompanyType | null;
   tasks: Task[];
   brandAssets?: BrandAssets;
@@ -24,45 +25,47 @@ type Badge = {
   icon: React.ReactNode;
   color: string;
   description: string;
-  condition: (tasks: Task[]) => boolean;
 };
 
-const BADGES: Badge[] = [
-  {
-    id: 'first-blood',
+const BADGES: Record<string, Badge> = {
+  'first_task': {
+    id: 'first_task',
     label: 'Onboarding Complete',
     icon: <Zap size={16} />,
     color: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-    description: 'Closed your first ticket',
-    condition: (t) => t.filter(x => x.isCompleted).length >= 1
+    description: 'Closed your first ticket'
   },
-  {
-    id: 'analyst',
+  'ten_tasks': {
+    id: 'ten_tasks',
     label: 'Contributor',
     icon: <TrendingUp size={16} />,
     color: 'bg-blue-100 text-blue-700 border-blue-200',
-    description: 'Delivered 3 successful projects',
-    condition: (t) => t.filter(x => x.isCompleted).length >= 3
+    description: 'Delivered 10 successful projects'
   },
-  {
-    id: 'scientist',
+  'first_hard': {
+    id: 'first_hard',
     label: 'Core Member',
     icon: <Briefcase size={16} />,
     color: 'bg-purple-100 text-purple-700 border-purple-200',
-    description: 'Delivered 5 successful projects',
-    condition: (t) => t.filter(x => x.isCompleted).length >= 5
+    description: 'Completed a Senior-level task'
   },
-  {
-    id: 'completionist',
+  'seven_day_streak': {
+    id: 'seven_day_streak',
+    label: 'Unstoppable',
+    icon: <Flame size={16} />,
+    color: 'bg-orange-100 text-orange-700 border-orange-200',
+    description: 'Maintained a 7-day consistency streak'
+  },
+  'roadmap_complete': {
+    id: 'roadmap_complete',
     label: 'Staff Engineer',
     icon: <Star size={16} />,
     color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    description: 'Cleared the entire roadmap',
-    condition: (t) => t.length > 0 && t.every(x => x.isCompleted)
+    description: 'Cleared an entire roadmap'
   }
-];
+};
 
-const HeatmapCell = ({ count }: { count: number }) => {
+const HeatmapCell = ({ count, date }: { count: number, date: string }) => {
   let colorClass = 'bg-slate-100';
   if (count === 1) colorClass = 'bg-emerald-200';
   if (count > 1) colorClass = 'bg-emerald-400';
@@ -70,13 +73,30 @@ const HeatmapCell = ({ count }: { count: number }) => {
 
   return (
     <div 
-      title={`${count} submissions`}
+      title={`${date}: ${count} submissions`}
       className={`w-2.5 h-2.5 rounded-sm ${colorClass}`} 
     />
   );
 };
 
-const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, onBack, onUpdateName, onSwitchWorkspace }) => {
+const MetricTooltip = ({ metricKey }: { metricKey: keyof typeof METRIC_EXPLANATIONS }) => {
+  const info = METRIC_EXPLANATIONS[metricKey];
+  return (
+      <div className="group relative inline-block ml-1">
+          <Info size={12} className="text-slate-400 cursor-help hover:text-indigo-500" />
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-800 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+              <div className="font-bold mb-1">{info.label}</div>
+              <div className="mb-2 leading-tight opacity-90">{info.description}</div>
+              <div className="font-mono text-[10px] text-indigo-300 border-t border-slate-700 pt-1">
+                  Rule: {info.rule}
+              </div>
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 w-2 h-2 bg-slate-800 rotate-45"></div>
+          </div>
+      </div>
+  );
+};
+
+const Profile: React.FC<ProfileProps> = ({ email, name, metrics, activeCompany, tasks, onBack, onUpdateName, onSwitchWorkspace }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [tempName, setTempName] = useState(name || 'Anonymous Engineer');
   const [activeTab, setActiveTab] = useState('Overview');
@@ -87,45 +107,16 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
   const recentHistory = [...completedTasks].sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 
   const totalTasks = tasks.length;
-  const progress = totalTasks > 0 ? (completedTasks.length / totalTasks) * 100 : 0;
-  
-  // Gamification Stats
-  const xp = completedTasks.length * 150;
-  const rank = xp < 450 ? 'Junior' : xp < 1000 ? 'Mid-Level' : 'Senior';
-  const earnedBadges = BADGES.filter(b => b.condition(tasks));
+  // Use persistent metrics or fallback to defaults
+  const xp = metrics?.xp || 0;
+  const level = metrics?.level || 'Junior';
+  const hours = metrics?.experienceHours || 0;
+  const impact = metrics?.impactScore || 0;
+  const streak = metrics?.currentStreak || 0;
+  const earnedBadgeIds = metrics?.achievements || [];
   
   // Extract unique skills from COMPLETED tasks only
   const skills = Array.from(new Set(completedTasks.flatMap(t => t.skills)));
-
-  // Calculate Streak
-  const streak = useMemo(() => {
-    if (completedTasks.length === 0) return 0;
-    
-    // Get unique dates of completion
-    const dates = new Set(
-        completedTasks
-        .filter(t => t.completedAt)
-        .map(t => new Date(t.completedAt!).toDateString())
-    );
-    
-    let currentStreak = 0;
-    const today = new Date();
-    
-    // Check backwards from today
-    for (let i = 0; i < 365; i++) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
-        if (dates.has(d.toDateString())) {
-            currentStreak++;
-        } else if (i === 0 && !dates.has(d.toDateString())) {
-            // If today is missing, streak might still be active from yesterday
-            continue; 
-        } else {
-            break;
-        }
-    }
-    return currentStreak;
-  }, [completedTasks]);
 
   const handleSave = () => {
     onUpdateName(tempName);
@@ -139,27 +130,23 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
       setSwitchingId(null);
   }
 
-  // Generate Real Heatmap Data (Last 120 days)
+  // Generate Heatmap Data from Persistence History
   const heatmapData = useMemo(() => {
     const data = [];
     const today = new Date();
-    // Normalize today to start of day for comparison
     today.setHours(0,0,0,0);
+    const history = metrics?.contributionHistory || {};
 
     for (let i = 119; i >= 0; i--) {
         const date = new Date(today);
         date.setDate(today.getDate() - i);
-        const dateStr = date.toDateString();
+        const dateStr = date.toISOString().split('T')[0];
         
-        const count = completedTasks.filter(t => {
-            if (!t.completedAt) return false;
-            return new Date(t.completedAt).toDateString() === dateStr;
-        }).length;
-        
+        const count = history[dateStr] || 0;
         data.push({ date: dateStr, count });
     }
     return data;
-  }, [completedTasks]);
+  }, [metrics]);
 
   // --- RENDER CONTENT BASED ON TAB ---
 
@@ -169,14 +156,16 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Solved Problems Card */}
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                 <h3 className="text-sm font-medium text-slate-500 mb-4">Career Trajectory</h3>
+                 <h3 className="text-sm font-medium text-slate-500 mb-4 flex items-center">
+                    Career Trajectory
+                 </h3>
                  <div className="flex items-center gap-8">
                     {/* Circle Chart */}
                     <div className="relative w-24 h-24 shrink-0">
                        <svg className="w-full h-full transform -rotate-90">
                           <circle cx="48" cy="48" r="40" stroke="#f1f5f9" strokeWidth="8" fill="none" />
                           <circle cx="48" cy="48" r="40" stroke="#4f46e5" strokeWidth="8" fill="none" 
-                             strokeDasharray={`${progress * 2.51} 251`} strokeLinecap="round" />
+                             strokeDasharray={`${Math.min((xp / 1500) * 251, 251)} 251`} strokeLinecap="round" />
                        </svg>
                        <div className="absolute inset-0 flex flex-col items-center justify-center">
                           <span className="text-xl font-bold text-slate-900">{completedTasks.length}</span>
@@ -187,18 +176,22 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
                     {/* Breakdown */}
                     <div className="flex-1 space-y-3">
                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-600">Experience Hours</span>
-                          <span className="font-bold text-slate-900">{Math.round(totalTasks * 2.5)}h</span>
+                          <span className="text-slate-600 flex items-center">
+                              Experience Hours <MetricTooltip metricKey="experienceHours"/>
+                          </span>
+                          <span className="font-bold text-slate-900">{hours}h</span>
                        </div>
                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-400" style={{ width: `${progress}%` }}></div>
+                          <div className="h-full bg-emerald-400" style={{ width: `${Math.min(hours, 100)}%` }}></div>
                        </div>
                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-600">Impact Score</span>
-                          <span className="font-bold text-slate-900">{xp}</span>
+                          <span className="text-slate-600 flex items-center">
+                              Impact Score <MetricTooltip metricKey="impactScore"/>
+                          </span>
+                          <span className="font-bold text-slate-900">{impact}</span>
                        </div>
                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                          <div className="h-full bg-amber-400" style={{ width: `${(xp % 450) / 4.5}%` }}></div>
+                          <div className="h-full bg-amber-400" style={{ width: `${Math.min(impact, 500) / 5}%` }}></div>
                        </div>
                     </div>
                  </div>
@@ -209,14 +202,18 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
                     <div className="flex justify-between items-start mb-2">
                        <h3 className="text-sm font-medium text-slate-500">Achievements</h3>
-                       <span className="text-xs font-bold text-slate-300">{earnedBadges.length} Earned</span>
+                       <span className="text-xs font-bold text-slate-300">{earnedBadgeIds.length} Earned</span>
                     </div>
                     <div className="flex gap-2 mt-1">
-                       {earnedBadges.length > 0 ? earnedBadges.map(badge => (
-                          <div key={badge.id} title={badge.description} className={`w-10 h-10 rounded-lg flex items-center justify-center border ${badge.color}`}>
-                             {badge.icon}
-                          </div>
-                       )) : (
+                       {earnedBadgeIds.length > 0 ? earnedBadgeIds.map(id => {
+                          const badge = BADGES[id];
+                          if (!badge) return null;
+                          return (
+                            <div key={id} title={badge.description} className={`w-10 h-10 rounded-lg flex items-center justify-center border ${badge.color}`}>
+                                {badge.icon}
+                            </div>
+                          );
+                       }) : (
                           <div className="text-sm text-slate-400 italic flex items-center gap-2">
                              <Award size={16} /> No achievements yet
                           </div>
@@ -226,7 +223,9 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
 
                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
                     <div>
-                       <h3 className="text-sm font-medium text-slate-500 mb-1">Consistency Streak</h3>
+                       <h3 className="text-sm font-medium text-slate-500 mb-1 flex items-center">
+                           Consistency Streak <MetricTooltip metricKey="streak"/>
+                       </h3>
                        <div className="text-2xl font-bold text-slate-900">
                           {streak} <span className="text-sm font-normal text-slate-400">days</span>
                        </div>
@@ -241,7 +240,9 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
            {/* Activity Graph */}
            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <div className="flex justify-between items-center mb-4">
-                 <h3 className="text-base font-bold text-slate-900">Contribution History (Last 4 Months)</h3>
+                 <h3 className="text-base font-bold text-slate-900 flex items-center">
+                     Contribution History (Last 4 Months) <MetricTooltip metricKey="contribution"/>
+                 </h3>
                  <div className="flex gap-2">
                     <span className="text-xs text-slate-400">Less</span>
                     <div className="flex gap-1">
@@ -257,7 +258,7 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
               {/* Heatmap Grid */}
               <div className="flex flex-wrap gap-1">
                  {heatmapData.map((day, i) => (
-                    <HeatmapCell key={i} count={day.count} />
+                    <HeatmapCell key={i} count={day.count} date={day.date} />
                  ))}
               </div>
               <div className="mt-4 text-xs text-slate-400 font-medium">
@@ -387,12 +388,12 @@ const Profile: React.FC<ProfileProps> = ({ email, name, activeCompany, tasks, on
                                 <p className="text-slate-500 flex items-center gap-2 mt-1">
                                     <User size={14} /> {email} 
                                     <span className="text-slate-300">|</span> 
-                                    <span className={`px-2 py-0.5 rounded text-xs font-bold border ${
-                                        rank === 'Senior' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                                        rank === 'Mid-Level' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                    <span className={`px-2 py-0.5 rounded text-xs font-bold border flex items-center gap-1 ${
+                                        level === 'Senior' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                        level === 'Intermediate' ? 'bg-amber-100 text-amber-700 border-amber-200' :
                                         'bg-slate-100 text-slate-600 border-slate-200'
                                     }`}>
-                                        {rank}
+                                        {level} <MetricTooltip metricKey="level"/>
                                     </span>
                                 </p>
                             </div>

@@ -14,7 +14,7 @@ const MarkdownText = ({ text }: { text: string }) => {
   const blocks = text.split(/(```[\s\S]*?```)/g);
 
   return (
-    <div className="text-slate-700 leading-relaxed space-y-4">
+    <div className="text-slate-700 leading-7 space-y-4">
       {blocks.map((block, i) => {
         if (block.startsWith('```') && block.endsWith('```')) {
           // Attempt to remove language identifier from first line
@@ -36,7 +36,7 @@ const MarkdownText = ({ text }: { text: string }) => {
         }
         
         return (
-            <div key={i} className="space-y-2">
+            <div key={i} className="space-y-3">
                 {block.split('\n').map((line, j) => {
                    const trimmed = line.trim();
                    if (!trimmed) return null;
@@ -45,7 +45,8 @@ const MarkdownText = ({ text }: { text: string }) => {
                    if (trimmed.startsWith('## ')) return <h2 key={j} className="text-xl font-bold text-slate-900 mt-8 mb-3 border-b border-slate-200 pb-2">{renderInline(trimmed.slice(3))}</h2>;
                    if (trimmed.startsWith('# ')) return <h1 key={j} className="text-2xl font-bold text-slate-900 mt-8 mb-4">{renderInline(trimmed.slice(2))}</h1>;
                    
-                   if (trimmed.startsWith('- ')) {
+                   // Handle bullets (- or *)
+                   if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
                        return (
                            <div key={j} className="flex gap-2 ml-4">
                                <span className="text-indigo-500 font-bold shrink-0">•</span>
@@ -54,6 +55,7 @@ const MarkdownText = ({ text }: { text: string }) => {
                        )
                    }
                    
+                   // Handle numbered lists
                    if (/^\d+\.\s/.test(trimmed)) {
                         const [num, ...rest] = trimmed.split('.');
                         return (
@@ -64,7 +66,7 @@ const MarkdownText = ({ text }: { text: string }) => {
                         )
                    }
 
-                   return <p key={j} className="">{renderInline(trimmed)}</p>;
+                   return <p key={j} className="mb-2">{renderInline(trimmed)}</p>;
                 })}
             </div>
         )

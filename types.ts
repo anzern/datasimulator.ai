@@ -20,21 +20,25 @@ export type SubTask = {
   isCompleted: boolean;
 };
 
+// GLOBAL DEFINITION (Shared across users)
 export type Task = {
   id: string;
   title: string;
   descriptionShort: string; // Brief one-liner
   difficulty: 'Easy' | 'Medium' | 'Hard'; // New field for complexity level
-  dueDate: string; // ISO Date string
+  dueDate: string; // ISO Date string (Base offset)
   skills: string[];
-  isCompleted: boolean;
-  completedAt?: number; // Timestamp of completion
-  thumbnailUrl?: string; // AI Generated cover image (approx 560x280)
+  thumbnailUrl?: string; // AI Generated cover image
   
   // Complexity additions
   subTasks?: SubTask[];
 
-  // Details (Loaded on demand)
+  // Follow-up Logic (Graph Structure)
+  relatedTasks?: Task[]; // Nested history/follow-up tasks
+  isFollowUp?: boolean; // UI Badge to denote this is a continuation
+  parentTaskId?: string; // Reference ID (optional)
+
+  // Details (Loaded on demand, Cached Globally)
   detailsLoaded: boolean;
   senderName?: string;
   senderRole?: string;
@@ -42,9 +46,21 @@ export type Task = {
   emailBody?: string;
   assets?: FileAsset[]; // Downloadable dummy data
   quiz?: QuizQuestion[]; // Validation questions
-  userAnswers?: Record<string, string>; // Persisted quiz answers
   technicalGuide?: string; // e.g., "Step 1: Create dbt model..."
-  solutionWriteup?: string; // Kaggle-style solution explanation
+  solutionWriteup?: string; // Global "Answer Key"
+  
+  // MERGED FIELDS (User Specific - Populated at runtime)
+  isCompleted?: boolean;
+  completedAt?: number;
+  userAnswers?: Record<string, string>;
+};
+
+// USER STATE (Progress Only)
+export type TaskProgress = {
+    taskId: string;
+    isCompleted: boolean;
+    completedAt?: number;
+    userAnswers?: Record<string, string>;
 };
 
 export type CompanyType = {
@@ -60,15 +76,33 @@ export type BrandAssets = {
   bannerUrl?: string;
 };
 
+export type UserMetrics = {
+  experienceHours: number;
+  impactScore: number;
+  achievements: string[]; // IDs of unlocked achievements
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate: string | null; // ISO Date YYYY-MM-DD
+  contributionHistory: Record<string, number>; // "YYYY-MM-DD": count
+  xp: number;
+  level: 'Junior' | 'Intermediate' | 'Senior';
+};
+
 export type UserState = {
+  uid: string; // Firebase Auth UID
   email: string;
   name?: string;
+  photoUrl?: string;
   companyId: string;
   createdAt: number; // Timestamp
-  tasks: Task[];
-  workspaces?: Record<string, Task[]>; // Multi-workspace support
-  lastActiveView?: 'board' | 'detail' | 'profile'; // For session restore
+  lastLogin?: number;
+  
+  // Progress Tracking
+  progress: Record<string, TaskProgress>; // Map taskId -> Progress
+  
+  lastActiveView?: 'board' | 'detail' | 'profile' | 'onboarding'; // For session restore
   lastActiveTaskId?: string; // For session restore
+  metrics?: UserMetrics; // Persistent stats
 };
 
 export type EnvConfig = {

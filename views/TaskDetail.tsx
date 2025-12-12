@@ -1,55 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CheckCircle, RefreshCw, Mail, Database, Terminal, FileText, Download, ImageIcon, GitBranch, Loader2, BookOpen, Lock, Unlock } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ArrowLeft, CheckCircle, RefreshCw, Mail, Database, Terminal, FileText, Download, ImageIcon, GitBranch, Loader2, BookOpen, Lock, Unlock, Check, Clock } from 'lucide-react';
 import { Task, CompanyType } from '../types';
 import MarkdownText from '../components/MarkdownText';
 import { downloadFile } from '../utils';
 
 interface TaskDetailProps {
-  task: Task;
+  task: Task; // This is the ROOT task
   activeCompany: CompanyType;
   loadingDetails: boolean;
   onBack: () => void;
-  onComplete: () => void; 
-  onQuizAnswerChange: (qId: string, val: string) => void;
-  onGenerateFollowUp: (task: Task) => Promise<void>;
-  onGenerateSolution: (task: Task) => Promise<void>;
+  onComplete: (taskId: string) => void; 
+  onQuizAnswerChange: (taskId: string, qId: string, val: string) => void;
+  onGenerateFollowUp: (rootTask: Task, contextTask: Task) => Promise<void>;
+  onGenerateSolution: (taskId: string) => Promise<void>;
+  onLoadDetails: (taskId: string) => Promise<void>;
 }
 
 const TaskDetail: React.FC<TaskDetailProps> = ({ 
-    task, activeCompany, loadingDetails, onBack, onComplete, onQuizAnswerChange, onGenerateFollowUp, onGenerateSolution
+    task: rootTask, activeCompany, loadingDetails, onBack, 
+    onComplete, onQuizAnswerChange, onGenerateFollowUp, onGenerateSolution, onLoadDetails
 }) => {
   const [activeTab, setActiveTab] = useState<'email' | 'assets' | 'guide' | 'quiz' | 'solution'>('email');
+  const [activeTaskId, setActiveTaskId] = useState<string>(rootTask.id);
   const [isGeneratingFollowUp, setIsGeneratingFollowUp] = useState(false);
   const [isGeneratingSolution, setIsGeneratingSolution] = useState(false);
   
-  // We determine submission state based on whether all questions are answered
-  const totalQuestions = task.quiz?.length || 0;
-  const answeredCount = Object.keys(task.userAnswers || {}).length;
-  // We can treat it as "Submitted" if task is completed
-  const quizSubmitted = task.isCompleted;
+  // Calculate the chain of tasks: Root -> FollowUp1 -> FollowUp2
+  const taskChain = useMemo(() => {
+      const chain = [rootTask];
+      if (rootTask.relatedTasks) {
+          chain.push(...rootTask.relatedTasks);
+      }
+      return chain;
+  }, [rootTask]);
+
+  // Determine the currently viewed task object
+  const activeTask = taskChain.find(t => t.id === activeTaskId) || rootTask;
+
+  // Auto-load details if selecting a task that isn't loaded yet
+  useEffect(() => {
+      if (!activeTask.detailsLoaded && !loadingDetails) {
+          onLoadDetails(activeTask.id);
+      }
+  }, [activeTaskId, activeTask.detailsLoaded]); // Only trigger on ID change
+
+  // Logic for the specific active task
+  const totalQuestions = activeTask.quiz?.length || 0;
+  const answeredCount = Object.keys(activeTask.userAnswers || {}).length;
+  const quizSubmitted = activeTask.isCompleted;
 
   const handleQuizSubmit = () => {
-    // In this simulation, submitting just marks it as done if all filled
-    if (!task.isCompleted) {
-       onComplete();
-       // Auto-switch to solution tab if available, else hint at it
+    if (!activeTask.isCompleted) {
+       onComplete(activeTask.id);
     }
   };
 
   const handleFollowUpClick = async () => {
       setIsGeneratingFollowUp(true);
-      await onGenerateFollowUp(task);
+      await onGenerateFollowUp(rootTask, activeTask); // Pass Root (parent) and Active (context)
       setIsGeneratingFollowUp(false);
-      onBack(); // Go back to board to see new task
+      // We do NOT navigate back; the new task will appear in the timeline
   };
 
   const handleSolutionClick = async () => {
-      if (!task.isCompleted) return; // Locked
+      if (!activeTask.isCompleted) return; // Locked
       setActiveTab('solution');
       
-      if (!task.solutionWriteup && !isGeneratingSolution) {
+      if (!activeTask.solutionWriteup && !isGeneratingSolution) {
           setIsGeneratingSolution(true);
-          await onGenerateSolution(task);
+          await onGenerateSolution(activeTask.id);
           setIsGeneratingSolution(false);
       }
   };
@@ -69,10 +88,10 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
               </button>
               <div>
                  <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                   {task.title}
-                   {task.isCompleted && <CheckCircle className="w-5 h-5 text-emerald-500" />}
+                   {rootTask.title}
+                   {rootTask.isCompleted && rootTask.relatedTasks?.every(t => t.isCompleted) && <CheckCircle className="w-5 h-5 text-emerald-500" />}
                  </h1>
-                 <p className="text-xs text-slate-500 font-mono">TICKET-{task.id}</p>
+                 <p className="text-xs text-slate-500 font-mono">PROJECT-{rootTask.id}</p>
               </div>
            </div>
         </div>
@@ -81,79 +100,119 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
            {loadingDetails && (
               <div className="absolute inset-0 bg-white/80 z-50 flex flex-col items-center justify-center">
                   <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mb-2" />
-                  <p className="text-slate-600 font-medium">Gathering Project Requirements...</p>
-                  <p className="text-slate-400 text-sm">Compiling stakeholder briefs, raw datasets & infrastructure docs</p>
+                  <p className="text-slate-600 font-medium">Loading Project Data...</p>
+                  <p className="text-slate-400 text-sm">Synchronizing timeline and assets</p>
               </div>
            )}
 
-           {/* Sidebar Navigation */}
-           <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col p-4 gap-2 shrink-0">
-              <button 
-                 onClick={() => setActiveTab('email')}
-                 className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeTab === 'email' ? 'bg-white shadow-sm border border-slate-200 text-indigo-600' : 'text-slate-600 hover:bg-white/50'}`}
-              >
-                 <Mail size={18} />
-                 <div className="flex-1">
-                    <div className="font-semibold text-sm">Stakeholder Brief</div>
-                 </div>
-              </button>
+           {/* Sidebar */}
+           <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col shrink-0">
+              
+              {/* Timeline Section */}
+              <div className="p-4 border-b border-slate-200 bg-slate-50/50">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <Clock size={12}/> Project Timeline
+                  </div>
+                  <div className="relative pl-2 space-y-0">
+                    {/* Vertical Connector Line */}
+                    <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-slate-200"></div>
+                    
+                    {taskChain.map((t) => (
+                      <div 
+                        key={t.id} 
+                        onClick={() => setActiveTaskId(t.id)} 
+                        className="relative flex items-center gap-3 py-2 cursor-pointer group"
+                      >
+                         {/* Status Dot */}
+                         <div className={`relative z-10 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors shadow-sm ${
+                             t.isCompleted ? 'bg-emerald-500 border-emerald-500' :
+                             activeTaskId === t.id ? 'bg-white border-indigo-600' :
+                             'bg-white border-slate-300 group-hover:border-indigo-400'
+                         }`}>
+                            {t.isCompleted && <Check size={10} className="text-white"/>}
+                            {activeTaskId === t.id && !t.isCompleted && <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full"/>}
+                         </div>
+                         
+                         <div className={`text-xs font-medium transition-colors ${activeTaskId === t.id ? 'text-indigo-700' : 'text-slate-600'}`}>
+                             <span className="block truncate max-w-[140px]" title={t.title}>{t.title}</span>
+                             {t.isFollowUp && <span className="text-[9px] text-slate-400 font-normal">Follow-up</span>}
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+              </div>
 
-              <button 
-                 onClick={() => setActiveTab('assets')}
-                 className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeTab === 'assets' ? 'bg-white shadow-sm border border-slate-200 text-indigo-600' : 'text-slate-600 hover:bg-white/50'}`}
-              >
-                 <Database size={18} />
-                 <div className="flex-1">
-                    <div className="font-semibold text-sm">Raw Data & Assets</div>
-                 </div>
-              </button>
+              {/* Navigation Tabs */}
+              <div className="flex-1 overflow-y-auto p-4 gap-2 flex flex-col">
+                  <button 
+                    onClick={() => setActiveTab('email')}
+                    className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeTab === 'email' ? 'bg-white shadow-sm border border-slate-200 text-indigo-600' : 'text-slate-600 hover:bg-white/50'}`}
+                  >
+                    <Mail size={18} />
+                    <div className="flex-1">
+                        <div className="font-semibold text-sm">Stakeholder Brief</div>
+                    </div>
+                  </button>
 
-              <button 
-                 onClick={() => setActiveTab('guide')}
-                 className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeTab === 'guide' ? 'bg-white shadow-sm border border-slate-200 text-indigo-600' : 'text-slate-600 hover:bg-white/50'}`}
-              >
-                 <Terminal size={18} />
-                 <div className="flex-1">
-                    <div className="font-semibold text-sm">Deployment Guide</div>
-                 </div>
-              </button>
+                  <button 
+                    onClick={() => setActiveTab('assets')}
+                    className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeTab === 'assets' ? 'bg-white shadow-sm border border-slate-200 text-indigo-600' : 'text-slate-600 hover:bg-white/50'}`}
+                  >
+                    <Database size={18} />
+                    <div className="flex-1">
+                        <div className="font-semibold text-sm">Raw Data & Assets</div>
+                    </div>
+                  </button>
 
-              <button 
-                 onClick={() => setActiveTab('quiz')}
-                 className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeTab === 'quiz' ? 'bg-white shadow-sm border border-slate-200 text-indigo-600' : 'text-slate-600 hover:bg-white/50'}`}
-              >
-                 <CheckCircle size={18} />
-                 <div className="flex-1">
-                    <div className="font-semibold text-sm">Deliverable Review</div>
-                 </div>
-              </button>
+                  <button 
+                    onClick={() => setActiveTab('guide')}
+                    className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeTab === 'guide' ? 'bg-white shadow-sm border border-slate-200 text-indigo-600' : 'text-slate-600 hover:bg-white/50'}`}
+                  >
+                    <Terminal size={18} />
+                    <div className="flex-1">
+                        <div className="font-semibold text-sm">Deployment Guide</div>
+                    </div>
+                  </button>
 
-               <div className="my-2 border-t border-slate-200"></div>
+                  <button 
+                    onClick={() => setActiveTab('quiz')}
+                    className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeTab === 'quiz' ? 'bg-white shadow-sm border border-slate-200 text-indigo-600' : 'text-slate-600 hover:bg-white/50'}`}
+                  >
+                    <CheckCircle size={18} />
+                    <div className="flex-1">
+                        <div className="font-semibold text-sm">Deliverable Review</div>
+                    </div>
+                  </button>
 
-              <button 
-                 onClick={handleSolutionClick}
-                 disabled={!task.isCompleted}
-                 className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors relative group
-                    ${activeTab === 'solution' 
-                        ? 'bg-amber-50 shadow-sm border border-amber-200 text-amber-700' 
-                        : task.isCompleted 
-                            ? 'text-slate-700 hover:bg-amber-50/50 hover:text-amber-700' 
-                            : 'text-slate-400 opacity-60 cursor-not-allowed hover:bg-transparent'
-                    }`}
-              >
-                 <BookOpen size={18} />
-                 <div className="flex-1">
-                    <div className="font-semibold text-sm">Solution Write-Up</div>
-                    {!task.isCompleted && <div className="text-[10px]">Unlock by completing task</div>}
-                 </div>
-                 {task.isCompleted ? <Unlock size={14} className="text-amber-500"/> : <Lock size={14}/>}
-              </button>
+                  <div className="my-2 border-t border-slate-200"></div>
 
-              <div className="mt-auto pt-4 border-t border-slate-200">
+                  <button 
+                    onClick={handleSolutionClick}
+                    disabled={!activeTask.isCompleted}
+                    className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors relative group
+                        ${activeTab === 'solution' 
+                            ? 'bg-amber-50 shadow-sm border border-amber-200 text-amber-700' 
+                            : activeTask.isCompleted 
+                                ? 'text-slate-700 hover:bg-amber-50/50 hover:text-amber-700' 
+                                : 'text-slate-400 opacity-60 cursor-not-allowed hover:bg-transparent'
+                        }`}
+                  >
+                    <BookOpen size={18} />
+                    <div className="flex-1">
+                        <div className="font-semibold text-sm">Solution Write-Up</div>
+                        {!activeTask.isCompleted && <div className="text-[10px]">Unlock by completing task</div>}
+                    </div>
+                    {activeTask.isCompleted ? <Unlock size={14} className="text-amber-500"/> : <Lock size={14}/>}
+                  </button>
+              </div>
+
+              {/* Generate Next Step */}
+              <div className="p-4 border-t border-slate-200">
                   <button 
                     onClick={handleFollowUpClick}
-                    disabled={isGeneratingFollowUp}
-                    className="w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                    disabled={isGeneratingFollowUp || !activeTask.isCompleted || activeTask.id !== taskChain[taskChain.length-1].id}
+                    className="w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={!activeTask.isCompleted ? "Complete current task first" : activeTask.id !== taskChain[taskChain.length-1].id ? "Select latest task to continue" : ""}
                   >
                      {isGeneratingFollowUp ? <Loader2 size={18} className="animate-spin"/> : <GitBranch size={18} />}
                      <div className="flex-1">
@@ -166,32 +225,37 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
 
            {/* Main Content Area */}
            <div className="flex-1 bg-white overflow-y-auto">
-              {/* Cover Image Banner (560x280 equivalent ratio 2:1 approx) */}
-              {task.thumbnailUrl && (
+              {/* Cover Image Banner */}
+              {activeTask.thumbnailUrl && (
                   <div className="w-full h-48 md:h-64 overflow-hidden relative group">
-                      <img src={task.thumbnailUrl} alt="Cover" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                      <img src={activeTask.thumbnailUrl} alt="Cover" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent"></div>
                       <div className="absolute bottom-4 left-6 text-white">
-                          <span className="px-2 py-1 bg-white/20 backdrop-blur-md rounded text-xs font-bold uppercase tracking-widest border border-white/30">
-                             {task.difficulty} Ticket
+                          <span className="px-2 py-1 bg-white/20 backdrop-blur-md rounded text-xs font-bold uppercase tracking-widest border border-white/30 mr-2">
+                             {activeTask.difficulty} Ticket
                           </span>
+                          {activeTask.isFollowUp && (
+                             <span className="px-2 py-1 bg-indigo-500/80 backdrop-blur-md rounded text-xs font-bold uppercase tracking-widest border border-indigo-400">
+                                Phase {taskChain.findIndex(t => t.id === activeTask.id) + 1}
+                             </span>
+                          )}
                       </div>
                   </div>
               )}
 
               <div className="p-8">
                 {/* 1. Request Tab */}
-                {activeTab === 'email' && task.detailsLoaded && (
+                {activeTab === 'email' && activeTask.detailsLoaded && (
                     <div className="max-w-3xl mx-auto animate-fade-in">
                         <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm mb-6">
                         <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-start justify-between">
                             <div className="flex items-center gap-4">
                                 <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg">
-                                    {task.senderName?.[0]}
+                                    {activeTask.senderName?.[0]}
                                 </div>
                                 <div>
-                                    <div className="font-bold text-slate-900">{task.senderName}</div>
-                                    <div className="text-xs text-slate-500">{task.senderRole}</div>
+                                    <div className="font-bold text-slate-900">{activeTask.senderName}</div>
+                                    <div className="text-xs text-slate-500">{activeTask.senderRole}</div>
                                 </div>
                             </div>
                             <div className="text-xs text-slate-400 font-medium bg-white px-2 py-1 rounded border border-slate-200">
@@ -200,10 +264,10 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                         </div>
                         <div className="p-8">
                             <h2 className="text-xl font-bold text-slate-900 mb-6 pb-4 border-b border-slate-100">
-                                {task.emailSubject}
+                                {activeTask.emailSubject}
                             </h2>
                             <div className="prose prose-slate max-w-none text-slate-700">
-                                <MarkdownText text={task.emailBody || ""} />
+                                <MarkdownText text={activeTask.emailBody || ""} />
                             </div>
                         </div>
                         </div>
@@ -211,13 +275,13 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                 )}
 
                 {/* 2. Assets Tab (Downloads) */}
-                {activeTab === 'assets' && task.detailsLoaded && (
+                {activeTab === 'assets' && activeTask.detailsLoaded && (
                     <div className="max-w-4xl mx-auto animate-fade-in">
                         <h2 className="text-2xl font-bold text-slate-900 mb-2">Production Artifacts</h2>
                         <p className="text-slate-500 mb-8">Download these resources to your local development environment to begin the task.</p>
                         
                         <div className="grid gap-4">
-                        {task.assets?.map((file, idx) => (
+                        {activeTask.assets?.map((file, idx) => (
                             <div key={idx} className="flex flex-col md:flex-row md:items-center justify-between p-5 border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-md transition-all bg-slate-50 gap-4">
                                 <div className="flex items-center gap-4">
                                 <div className="p-3 bg-white rounded-lg border border-slate-200 shrink-0">
@@ -253,24 +317,24 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                 )}
 
                 {/* 3. Technical Guide */}
-                {activeTab === 'guide' && task.detailsLoaded && (
+                {activeTab === 'guide' && activeTask.detailsLoaded && (
                     <div className="max-w-3xl mx-auto animate-fade-in">
                         <h2 className="text-2xl font-bold text-slate-900 mb-6">Engineering Playbook</h2>
                         <div className="prose prose-slate max-w-none prose-pre:bg-slate-900 prose-pre:text-indigo-100">
-                        <MarkdownText text={task.technicalGuide || ""} />
+                        <MarkdownText text={activeTask.technicalGuide || ""} />
                         </div>
                     </div>
                 )}
 
                 {/* 4. Quiz / Validation */}
-                {activeTab === 'quiz' && task.detailsLoaded && (
+                {activeTab === 'quiz' && activeTask.detailsLoaded && (
                     <div className="max-w-3xl mx-auto animate-fade-in">
                         <h2 className="text-2xl font-bold text-slate-900 mb-2">Impact Analysis</h2>
                         <p className="text-slate-500 mb-8">Validate your findings and report the business impact of your solution.</p>
 
                         <div className="space-y-8">
-                        {task.quiz?.map((q, idx) => {
-                            const currentAnswer = task.userAnswers?.[q.id];
+                        {activeTask.quiz?.map((q, idx) => {
+                            const currentAnswer = activeTask.userAnswers?.[q.id];
                             const isCorrect = currentAnswer === q.correctAnswer;
                             
                             return (
@@ -305,7 +369,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                                                         value={opt}
                                                         disabled={quizSubmitted}
                                                         checked={currentAnswer === opt}
-                                                        onChange={(e) => onQuizAnswerChange(q.id, e.target.value)}
+                                                        onChange={(e) => onQuizAnswerChange(activeTask.id, q.id, e.target.value)}
                                                         className="w-4 h-4 text-indigo-600"
                                                     />
                                                     <span className="text-sm text-slate-700">{opt}</span>
@@ -319,7 +383,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                                         placeholder="Enter your result..." 
                                         disabled={quizSubmitted}
                                         value={currentAnswer || ''}
-                                        onChange={(e) => onQuizAnswerChange(q.id, e.target.value)}
+                                        onChange={(e) => onQuizAnswerChange(activeTask.id, q.id, e.target.value)}
                                         className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                                         />
                                     )}
@@ -341,14 +405,14 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                             disabled={quizSubmitted || answeredCount < totalQuestions}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-all shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none"
                         >
-                            {quizSubmitted ? 'Ticket Closed' : 'Submit Deliverable'}
+                            {quizSubmitted ? 'Phase Complete' : 'Submit Deliverable'}
                         </button>
                         </div>
                     </div>
                 )}
 
                  {/* 5. Solution Write-Up Tab */}
-                 {activeTab === 'solution' && task.isCompleted && (
+                 {activeTab === 'solution' && activeTask.isCompleted && (
                     <div className="max-w-3xl mx-auto animate-fade-in">
                         <div className="flex items-center justify-between mb-6">
                             <div>
@@ -371,7 +435,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                         ) : (
                             <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
                                 <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-a:text-indigo-600 prose-strong:text-slate-900">
-                                    <MarkdownText text={task.solutionWriteup || "No solution generated yet."} />
+                                    <MarkdownText text={activeTask.solutionWriteup || "No solution generated yet."} />
                                 </div>
                             </div>
                         )}

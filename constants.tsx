@@ -4,6 +4,34 @@ import {
 } from "lucide-react";
 import { CompanyType } from './types';
 
+export const METRIC_EXPLANATIONS = {
+  experienceHours: {
+    label: "Experience Hours",
+    description: "Your total hands-on practice time across all completed projects.",
+    rule: "Easy (+2h), Medium (+5h), Hard (+10h)"
+  },
+  impactScore: {
+    label: "Impact Score",
+    description: "A measure of the difficulty and technical depth of the tasks you’ve completed.",
+    rule: "Weighted scoring based on difficulty + Technical Stack Bonus (+5)"
+  },
+  streak: {
+    label: "Consistency Streak",
+    description: "How consistently you’ve been active—reset if you miss a day.",
+    rule: "Consecutive days with at least 1 completed task."
+  },
+  level: {
+    label: "Role Level",
+    description: "Your current skill tier based on the XP you’ve earned from tasks.",
+    rule: "Junior (0-500), Intermediate (501-1500), Senior (1500+)"
+  },
+  contribution: {
+    label: "Activity",
+    description: "Your activity pattern over time, shown in a GitHub-style heatmap.",
+    rule: "Tasks completed per day."
+  }
+};
+
 export const COMPANIES: CompanyType[] = [
   { id: 'meta', label: 'Meta', industry: 'Social Media', icon: <Share2 className="w-6 h-6" />, description: 'Optimize ad targeting algorithms, analyze social graph density, and build automated content moderation pipelines at scale.' },
   { id: 'instagram', label: 'Instagram', industry: 'Social Media', icon: <Camera className="w-6 h-6" />, description: 'Develop Reels recommendation engines, model creator monetization strategies, and analyze visual engagement trends.' },
@@ -76,15 +104,23 @@ export const TASK_DETAIL_PROMPT = `
 You are a Staff Data Scientist/Engineer acting as a mentor. Generate a realistic project simulation package.
 
 1. emailBody: A realistic email from a Stakeholder (Product Manager, VP of Sales, or Engineering Lead). 
-   - Tone: Professional but slightly ambiguous (like real life). 
+   - Structure: 
+     - Paragraph 1: Context & Business Value (Why are we doing this?).
+     - Paragraph 2: The Core Problem or "Dirty Reality" (e.g. data is missing, legacy system issues).
+     - Paragraph 3: Specific KPIs and Deliverable Requirements. Use bullet points for clear metrics.
+   - Tone: Professional but slightly ambiguous (like real life).
    - Content: Focus on the *business problem* (e.g., "Revenue is down 5%"), not just the technical requirements. Mention specific KPIs.
+
 2. coverImagePrompt: A detailed prompt to generate a high-quality 16:9 abstract technical illustration representing this project (e.g., "A sophisticated data visualization of network traffic glowing in a dark UI").
+
 3. assets: Generate 2-3 assets.
    - **For Tables/Data**: Provide 'csv' or 'sql' content. It MUST be "Dirty Data" (inconsistent formatting, nulls, duplicates) to force the user to clean it.
    - **For Visuals**: If the task involves Computer Vision or UI analysis, you MUST include an asset with type 'image' containing a detailed image prompt.
+
 4. technicalGuide: A Staff-level execution guide.
    - **Architecture**: How this fits into the stack.
    - **The "Gotchas"**: Specific production pitfalls to avoid.
+
 5. quiz: 5 Validation questions to verify the user understood the business impact and technical implementation.
 
 The goal is to simulate a day on the job, not a classroom exercise.
