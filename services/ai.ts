@@ -1,6 +1,6 @@
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { CompanyType, Task, EnvConfig } from "../types";
-import { ROADMAP_PROMPT, TASK_DETAIL_PROMPT, ENV_SETUP_PROMPT, SINGLE_TASK_PROMPT, FOLLOWUP_TASK_PROMPT } from "../constants";
+import { ROADMAP_PROMPT, TASK_DETAIL_PROMPT, ENV_SETUP_PROMPT, SINGLE_TASK_PROMPT, FOLLOWUP_TASK_PROMPT, SOLUTION_WRITEUP_PROMPT } from "../constants";
 
 class AIService {
   private genAI: GoogleGenAI;
@@ -201,6 +201,24 @@ class AIService {
       console.error("Error generating task details:", error);
       return task;
     }
+  }
+
+  async generateSolutionWriteup(company: CompanyType, task: Task): Promise<string> {
+      try {
+          const prompt = SOLUTION_WRITEUP_PROMPT
+            .replace('{{TITLE}}', task.title)
+            .replace('{{DESCRIPTION}}', task.descriptionShort);
+
+          const result = await this.genAI.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: `Company: ${company.label}. ${prompt}`
+          });
+
+          return result.text || "";
+      } catch (error) {
+          console.error("Error generating solution writeup:", error);
+          return "## System Error\nCould not generate solution write-up. Please try again later.";
+      }
   }
 
   async generateEnvConfig(company: CompanyType): Promise<EnvConfig> {

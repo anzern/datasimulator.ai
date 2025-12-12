@@ -44,6 +44,7 @@ export type Task = {
   quiz?: QuizQuestion[]; // Validation questions
   userAnswers?: Record<string, string>; // Persisted quiz answers
   technicalGuide?: string; // e.g., "Step 1: Create dbt model..."
+  solutionWriteup?: string; // Kaggle-style solution explanation
 };
 
 export type CompanyType = {

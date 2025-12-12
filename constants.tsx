@@ -90,6 +90,22 @@ You are a Staff Data Scientist/Engineer acting as a mentor. Generate a realistic
 The goal is to simulate a day on the job, not a classroom exercise.
 `;
 
+export const SOLUTION_WRITEUP_PROMPT = `
+You are a Kaggle Grandmaster/Staff Engineer. Write a high-quality "Winning Solution" write-up for the following completed data task.
+
+Task: {{TITLE}}
+Description: {{DESCRIPTION}}
+
+Structure the markdown response strictly as follows:
+1. **Executive Summary**: A brief 2-3 sentence overview of the final approach and its business impact.
+2. **Data Processing Strategy**: How specific "dirty data" issues were handled (imputation, outlier removal) and key Feature Engineering steps (e.g., lag features, embeddings, encodings).
+3. **Modeling Architecture**: The specific models chosen (e.g., XGBoost, LightGBM, Transformer, or dbt DAG structure) and WHY. Mention hyperparameters or architectural choices.
+4. **Validation Strategy**: How the solution was validated (e.g., TimeSeriesSplit, StratifiedKFold) to prevent overfitting.
+5. **Productionization**: How this was deployed (Docker, Airflow, API latency considerations).
+
+Tone: Professional, technical, and celebratory (like a forum post explaining a gold medal solution). Use bolding and lists for readability.
+`;
+
 export const ENV_SETUP_PROMPT = `
 You are a Senior DevOps Engineer.
 Generate a 'docker-compose.yml' and an 'init.sql' file to provision a local production-grade environment.

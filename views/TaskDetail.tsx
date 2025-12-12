@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CheckCircle, RefreshCw, Mail, Database, Terminal, FileText, Download, ImageIcon, GitBranch, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, RefreshCw, Mail, Database, Terminal, FileText, Download, ImageIcon, GitBranch, Loader2, BookOpen, Lock, Unlock } from 'lucide-react';
 import { Task, CompanyType } from '../types';
 import MarkdownText from '../components/MarkdownText';
 import { downloadFile } from '../utils';
@@ -12,13 +12,15 @@ interface TaskDetailProps {
   onComplete: () => void; 
   onQuizAnswerChange: (qId: string, val: string) => void;
   onGenerateFollowUp: (task: Task) => Promise<void>;
+  onGenerateSolution: (task: Task) => Promise<void>;
 }
 
 const TaskDetail: React.FC<TaskDetailProps> = ({ 
-    task, activeCompany, loadingDetails, onBack, onComplete, onQuizAnswerChange, onGenerateFollowUp
+    task, activeCompany, loadingDetails, onBack, onComplete, onQuizAnswerChange, onGenerateFollowUp, onGenerateSolution
 }) => {
-  const [activeTab, setActiveTab] = useState<'email' | 'assets' | 'guide' | 'quiz'>('email');
+  const [activeTab, setActiveTab] = useState<'email' | 'assets' | 'guide' | 'quiz' | 'solution'>('email');
   const [isGeneratingFollowUp, setIsGeneratingFollowUp] = useState(false);
+  const [isGeneratingSolution, setIsGeneratingSolution] = useState(false);
   
   // We determine submission state based on whether all questions are answered
   const totalQuestions = task.quiz?.length || 0;
@@ -30,6 +32,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
     // In this simulation, submitting just marks it as done if all filled
     if (!task.isCompleted) {
        onComplete();
+       // Auto-switch to solution tab if available, else hint at it
     }
   };
 
@@ -38,6 +41,17 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
       await onGenerateFollowUp(task);
       setIsGeneratingFollowUp(false);
       onBack(); // Go back to board to see new task
+  };
+
+  const handleSolutionClick = async () => {
+      if (!task.isCompleted) return; // Locked
+      setActiveTab('solution');
+      
+      if (!task.solutionWriteup && !isGeneratingSolution) {
+          setIsGeneratingSolution(true);
+          await onGenerateSolution(task);
+          setIsGeneratingSolution(false);
+      }
   };
 
   return (
@@ -112,6 +126,27 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                  <div className="flex-1">
                     <div className="font-semibold text-sm">Deliverable Review</div>
                  </div>
+              </button>
+
+               <div className="my-2 border-t border-slate-200"></div>
+
+              <button 
+                 onClick={handleSolutionClick}
+                 disabled={!task.isCompleted}
+                 className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors relative group
+                    ${activeTab === 'solution' 
+                        ? 'bg-amber-50 shadow-sm border border-amber-200 text-amber-700' 
+                        : task.isCompleted 
+                            ? 'text-slate-700 hover:bg-amber-50/50 hover:text-amber-700' 
+                            : 'text-slate-400 opacity-60 cursor-not-allowed hover:bg-transparent'
+                    }`}
+              >
+                 <BookOpen size={18} />
+                 <div className="flex-1">
+                    <div className="font-semibold text-sm">Solution Write-Up</div>
+                    {!task.isCompleted && <div className="text-[10px]">Unlock by completing task</div>}
+                 </div>
+                 {task.isCompleted ? <Unlock size={14} className="text-amber-500"/> : <Lock size={14}/>}
               </button>
 
               <div className="mt-auto pt-4 border-t border-slate-200">
@@ -309,6 +344,37 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
                             {quizSubmitted ? 'Ticket Closed' : 'Submit Deliverable'}
                         </button>
                         </div>
+                    </div>
+                )}
+
+                 {/* 5. Solution Write-Up Tab */}
+                 {activeTab === 'solution' && task.isCompleted && (
+                    <div className="max-w-3xl mx-auto animate-fade-in">
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-900">Winning Solution</h2>
+                                <p className="text-amber-600 font-medium text-sm flex items-center gap-1 mt-1">
+                                    <BookOpen size={14}/> 1st Place Approach (Gold Medal)
+                                </p>
+                            </div>
+                            <div className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border border-amber-200">
+                                Answer Key
+                            </div>
+                        </div>
+
+                        {isGeneratingSolution ? (
+                            <div className="bg-white border border-slate-200 rounded-xl p-12 flex flex-col items-center justify-center text-center">
+                                <Loader2 className="w-10 h-10 text-amber-500 animate-spin mb-4" />
+                                <h3 className="text-lg font-bold text-slate-800">Drafting Solution Post...</h3>
+                                <p className="text-slate-500 text-sm mt-2 max-w-sm">Compiling feature engineering techniques, model architecture diagrams, and validation strategies.</p>
+                            </div>
+                        ) : (
+                            <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
+                                <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-a:text-indigo-600 prose-strong:text-slate-900">
+                                    <MarkdownText text={task.solutionWriteup || "No solution generated yet."} />
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
              </div>

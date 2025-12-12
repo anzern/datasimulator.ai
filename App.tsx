@@ -319,6 +319,15 @@ const App = () => {
       updateTasksAndPersist(updatedTasks);
   };
 
+  const handleGenerateSolution = async (task: Task) => {
+      if (!activeCompany) return;
+      const solution = await aiService.generateSolutionWriteup(activeCompany, task);
+      const updatedTask = { ...task, solutionWriteup: solution };
+      const updatedTasks = tasks.map(t => t.id === task.id ? updatedTask : t);
+      setCurrentTask(updatedTask);
+      updateTasksAndPersist(updatedTasks);
+  };
+
   const handleOpenHelp = () => {
       setView('help');
   };
@@ -401,6 +410,7 @@ const App = () => {
         onComplete={handleCompleteTask}
         onQuizAnswerChange={handleQuizAnswer}
         onGenerateFollowUp={handleGenerateFollowUp}
+        onGenerateSolution={handleGenerateSolution}
       />
     );
   }
